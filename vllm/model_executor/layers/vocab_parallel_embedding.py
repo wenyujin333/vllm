@@ -76,6 +76,7 @@ class VocabParallelEmbedding(torch.nn.Module):
             torch.empty(self.num_embeddings_per_partition,
                         self.embedding_dim,
                         dtype=params_dtype))
+        torch.nn.init.normal_(self.weight)
         set_weight_attrs(self.weight, {
             "parallel_dim": 0,
             "weight_loader": self.weight_loader
@@ -137,6 +138,7 @@ class ParallelLMHead(VocabParallelEmbedding):
             self.bias = Parameter(
                 torch.empty(self.num_embeddings_per_partition,
                             dtype=params_dtype))
+            torch.nn.init.normal_(self.bias)
             set_weight_attrs(self.bias, {
                 "parallel_dim": 0,
                 "weight_loader": self.weight_loader

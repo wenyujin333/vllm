@@ -94,11 +94,15 @@ class Qwen2MoeSparseMoeBlock(nn.Module):
         self,
         config: PretrainedConfig,
         linear_method: Optional[LinearMethodBase] = None,
+        tp_size = None
     ):
         super().__init__()
         self.config = config
         self.rank = get_tensor_model_parallel_rank()
-        self.tp_size = get_tensor_model_parallel_world_size()
+        if tp_size is not None:
+            self.tp_size = tp_size
+        else:
+            self.tp_size = get_tensor_model_parallel_world_size()
         self.n_routed_experts = config.num_experts
         self.top_k = config.num_experts_per_tok
         if self.tp_size > self.n_routed_experts:
@@ -153,7 +157,14 @@ class Qwen2MoeSparseMoeBlock(nn.Module):
 
         self.w2 = self.w2.view(len(w2), *w2s[0].shape)
 
+    def mock_router_topk(self, router_logits):
+      with torch.no_grad():
+        mock_router_logits = torch.rand(size=router_logits.shape).to(router_logits.dtype).to(router_logits.device)
+      return mock_router_logits
+
     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        # if torch.distributed.get_rank() == 0:
+        #     print(f"!!! hidden_states {hidden_states.shape}")
         num_tokens, hidden_dim = hidden_states.shape
         hidden_states = hidden_states.view(-1, hidden_dim)
         shared_output = None
@@ -164,6 +175,7 @@ class Qwen2MoeSparseMoeBlock(nn.Module):
 
         # router_logits: (num_tokens, n_experts)
         router_logits, _ = self.gate(hidden_states)
+        # router_logits = self.mock_router_topk(router_logits)
         final_hidden_states = fused_moe(hidden_states,
                                         self.w1,
                                         self.w2,
@@ -420,38 +432,38 @@ class Qwen2MoeForCausalLM(nn.Module):
         ]
 
         params_dict = dict(self.named_parameters())
-        for name, loaded_weight in hf_model_weights_iterator(
-                model_name_or_path,
-                cache_dir,
-                load_format,
-                revision,
-                fall_back_to_pt=False):
-            if "rotary_emb.inv_freq" in name:
-                continue
-            for (param_name, weight_name, shard_id) in stacked_params_mapping:
-                if weight_name not in name:
-                    continue
-                name = name.replace(weight_name, param_name)
-                # Skip loading extra bias for GPTQ models.
-                if name.endswith(".bias") and name not in params_dict:
-                    continue
-                # Skip experts that are not assigned to this worker.
-                if (("mlp.experts." in name or "mlp.shared_expert." in name)
-                        and name not in params_dict):
-                    continue
-                param = params_dict[name]
-                weight_loader = param.weight_loader
-                weight_loader(param, loaded_weight, shard_id)
-                break
-            else:
-                # Skip loading extra bias for GPTQ models.
-                if name.endswith(".bias") and name not in params_dict:
-                    continue
-                # Skip experts that are not assigned to this worker.
-                if (("mlp.experts." in name or "mlp.shared_expert." in name)
-                        and name not in params_dict):
-                    continue
-                param = params_dict[name]
-                weight_loader = getattr(param, "weight_loader",
-                                        default_weight_loader)
-                weight_loader(param, loaded_weight)
+        # for name, loaded_weight in hf_model_weights_iterator(
+        #         model_name_or_path,
+        #         cache_dir,
+        #         load_format,
+        #         revision,
+        #         fall_back_to_pt=False):
+        #     if "rotary_emb.inv_freq" in name:
+        #         continue
+        #     for (param_name, weight_name, shard_id) in stacked_params_mapping:
+        #         if weight_name not in name:
+        #             continue
+        #         name = name.replace(weight_name, param_name)
+        #         # Skip loading extra bias for GPTQ models.
+        #         if name.endswith(".bias") and name not in params_dict:
+        #             continue
+        #         # Skip experts that are not assigned to this worker.
+        #         if (("mlp.experts." in name or "mlp.shared_expert." in name)
+        #                 and name not in params_dict):
+        #             continue
+        #         param = params_dict[name]
+        #         weight_loader = param.weight_loader
+        #         weight_loader(param, loaded_weight, shard_id)
+        #         break
+        #     else:
+        #         # Skip loading extra bias for GPTQ models.
+        #         if name.endswith(".bias") and name not in params_dict:
+        #             continue
+        #         # Skip experts that are not assigned to this worker.
+        #         if (("mlp.experts." in name or "mlp.shared_expert." in name)
+        #                 and name not in params_dict):
+        #             continue
+        #         param = params_dict[name]
+        #         weight_loader = getattr(param, "weight_loader",
+        #                                 default_weight_loader)
+        #         weight_loader(param, loaded_weight)

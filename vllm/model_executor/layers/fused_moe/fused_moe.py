@@ -353,12 +353,17 @@ def fused_moe(
         del token_expert_indicies  # Not used. Will be used in the future.
     if renormalize:
         topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    
+    # expert_num = gating_output.size()[-1]
+    # topk_ids = torch.randint(0,expert_num, topk_ids.size()).to(torch.int32).to(hidden_states.device)
+    # if torch.distributed.get_rank() == 0:
+    #     print(f"!!! topk_ids {topk_ids.shape} {topk_ids}")
 
     if override_config:
         config = override_config
     else:
         # First try to load optimal config from the file
-        configs = get_moe_configs(E, w2.shape[2])
+        configs = None  #get_moe_configs(E, w2.shape[2])
 
         if configs:
             # If an optimal configuration map has been found, look up the

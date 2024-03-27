@@ -235,6 +235,10 @@ def detokenize_incrementally(
     # Put new_token_id in a list so skip_special_tokens is respected
     new_tokens = tokenizer.convert_ids_to_tokens(
         [new_token_id], skip_special_tokens=skip_special_tokens)
+    for i in range(len(new_tokens)):
+        if new_tokens[i] is None:
+            print("??? none new token")
+            new_tokens[i] = 'a'
     output_tokens = prev_tokens + new_tokens
 
     # If this is the first iteration, return all tokens.

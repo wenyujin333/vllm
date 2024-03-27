@@ -191,18 +191,36 @@ def run_mii(
     return end - start
 
 
+def open_jsonl(path):
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    opt = []
+    for line in lines:
+        opt.append(json.loads(line))
+    return opt
+
 def main(args: argparse.Namespace):
     print(args)
     random.seed(args.seed)
-
+    
     # Sample the requests.
     tokenizer = AutoTokenizer.from_pretrained(
         args.tokenizer, trust_remote_code=args.trust_remote_code)
+    samples = open_jsonl("/cpfs01/shared/public/dangkai.dk/data/v10.15.23_redbook_bookqa_32k/bookqa.jsonl")
+    # print(f"samples {samples}")
     if args.dataset is None:
         # Synthesize a prompt with the given input length.
-        prompt = "hi" * (args.input_len - 1)
-        requests = [(prompt, args.input_len, args.output_len)
-                    for _ in range(args.num_prompts)]
+        requests=[]
+        for i in range(args.num_prompts):
+            prompt = samples[i%200]["messages"][1]["content"]
+            input_ids = tokenizer.encode(prompt, return_tensors="pt")
+            text = tokenizer.decode(input_ids[0][:(args.input_len - 1)], skip_special_tokens=True)
+            # print(f"!!! {len(input_ids[0][:1000])} text {len(text)}")
+            requests.append((text, args.input_len, args.output_len)) 
+        # Synthesize a prompt with the given input length.
+        # prompt = "hi" * (args.input_len - 1)
+        # requests = [(prompt, args.input_len, args.output_len)
+        #             for _ in range(args.num_prompts)]
     else:
         requests = sample_requests(args.dataset, args.num_prompts, tokenizer,
                                    args.output_len)
